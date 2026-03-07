@@ -1,5 +1,6 @@
 const express = require('express');
-const { nanoid } = require('nanoid');
+const { customAlphabet } = require('nanoid');
+const nanoid = customAlphabet('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ', 8);
 const Room = require('../models/Room');
 const Problem = require('../models/Problem');
 const authMiddleware = require('../middleware/authMiddleware');
