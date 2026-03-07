@@ -7,6 +7,7 @@ const authRoutes = require("./routes/auth")
 const problemRoutes = require("./routes/problems")
 const executeRoutes = require("./routes/execute")
 const roomRoutes = require("./routes/rooms")
+const submitRoutes = require("./routes/submit")
 
 const app = express()
 
@@ -23,6 +24,7 @@ app.use("/api/auth", authRoutes)
 app.use("/api/problems", problemRoutes)
 app.use("/api/execute", executeRoutes)
 app.use("/api/rooms", roomRoutes)
+app.use("/api/submit", submitRoutes)
 
 const PORT = process.env.PORT || 3000
 
