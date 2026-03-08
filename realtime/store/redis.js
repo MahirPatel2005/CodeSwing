@@ -39,11 +39,14 @@ async function getLeaderboard(roomId) {
   
   return Object.values(usersData)
     .map(data => JSON.parse(data))
-    .filter(user => user.charCount !== null)
-    .sort((a, b) => a.charCount - b.charCount)
+    .sort((a, b) => {
+      if (a.charCount === null) return 1;
+      if (b.charCount === null) return -1;
+      return a.charCount - b.charCount;
+    })
     .map((user, index) => ({
       ...user,
-      rank: index + 1
+      rank: user.charCount !== null ? index + 1 : null
     }));
 }
 

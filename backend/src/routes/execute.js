@@ -25,26 +25,32 @@ router.post("/", async (req, res) => {
     }
 
     const submission = await axios.post(
-      `${JUDGE0_URL}/submissions?base64_encoded=false&wait=true`,
+      `${JUDGE0_URL}/submissions?base64_encoded=true&wait=true`,
       {
-        source_code: code,
+        source_code: Buffer.from(code).toString('base64'),
         language_id,
-        stdin: stdin || ""
+        stdin: Buffer.from(stdin || "").toString('base64')
       }
     );
 
+    const decode = (str) => str ? Buffer.from(str, 'base64').toString('utf8') : null;
+
     res.json({
-      stdout: submission.data.stdout,
-      stderr: submission.data.stderr,
-      compile_output: submission.data.compile_output,
+      stdout: decode(submission.data.stdout),
+      stderr: decode(submission.data.stderr),
+      compile_output: decode(submission.data.compile_output),
       time: submission.data.time,
       memory: submission.data.memory,
       status: submission.data.status
     });
 
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Execution failed" });
+    if (error.response) {
+      console.error("Judge0 Error:", error.response.data);
+    } else {
+      console.error("Execution error:", error.message);
+    }
+    res.status(500).json({ error: "Execution failed", details: error.message });
   }
 });
 
