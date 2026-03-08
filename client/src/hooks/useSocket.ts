@@ -13,14 +13,17 @@ export const useSocket = (roomId: string) => {
     useEffect(() => {
         if (!roomId || !user) return;
 
-        socketRef.current = io(SOCKET_URL);
+        const socket = io(SOCKET_URL);
+        socketRef.current = socket;
 
-        // Join room
-        socketRef.current.emit('room:join', {
-            roomId,
-            userId: user.userId,
-            username: user.username,
-            avatar: `https://api.dicebear.com/7.x/pixel-art/svg?seed=${user.username}`
+        socket.on('connect', () => {
+            console.log('Socket connected, joining room:', roomId);
+            socket.emit('room:join', {
+                roomId,
+                userId: user.userId,
+                username: user.username,
+                avatar: `https://api.dicebear.com/7.x/pixel-art/svg?seed=${user.username}`
+            });
         });
 
         // Listeners

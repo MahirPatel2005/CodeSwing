@@ -14,6 +14,10 @@ redis.on('connect', () => {
   console.log('Successfully connected to Redis');
 });
 
+redis.on('error', (err) => {
+  console.error('Redis error:', err);
+});
+
 /**
  * Updates a user's character count in a room.
  * @param {string} roomId
@@ -22,10 +26,16 @@ redis.on('connect', () => {
  */
 async function updateLeaderboard(roomId, userId, data) {
   const key = `room:${roomId}:users`;
-  await redis.hset(key, userId, JSON.stringify({
-    ...data,
-    updatedAt: Date.now()
-  }));
+  try {
+    const stringifiedData = JSON.stringify({
+      ...data,
+      updatedAt: Date.now()
+    });
+    await redis.hset(key, userId, stringifiedData);
+  } catch (err) {
+    console.error(`Error in updateLeaderboard:`, err);
+    throw err;
+  }
 }
 
 /**
@@ -35,19 +45,32 @@ async function updateLeaderboard(roomId, userId, data) {
  */
 async function getLeaderboard(roomId) {
   const key = `room:${roomId}:users`;
-  const usersData = await redis.hgetall(key);
-  
-  return Object.values(usersData)
-    .map(data => JSON.parse(data))
-    .sort((a, b) => {
-      if (a.charCount === null) return 1;
-      if (b.charCount === null) return -1;
-      return a.charCount - b.charCount;
-    })
-    .map((user, index) => ({
-      ...user,
-      rank: user.charCount !== null ? index + 1 : null
-    }));
+  try {
+    const usersData = await redis.hgetall(key);
+    
+    return Object.values(usersData)
+      .map(data => {
+        try {
+          return JSON.parse(data);
+        } catch (e) {
+          console.error(`Failed to parse user data: ${data}`, e);
+          return null;
+        }
+      })
+      .filter(u => u !== null)
+      .sort((a, b) => {
+        if (a.charCount === null) return 1;
+        if (b.charCount === null) return -1;
+        return a.charCount - b.charCount;
+      })
+      .map((user, index) => ({
+        ...user,
+        rank: user.charCount !== null ? index + 1 : null
+      }));
+  } catch (err) {
+    console.error(`Error in getLeaderboard:`, err);
+    throw err;
+  }
 }
 
 /**
@@ -57,7 +80,11 @@ async function getLeaderboard(roomId) {
  */
 async function removeUserFromRoom(roomId, userId) {
   const key = `room:${roomId}:users`;
-  await redis.hdel(key, userId);
+  try {
+    await redis.hdel(key, userId);
+  } catch (err) {
+    console.error(`Error in removeUserFromRoom:`, err);
+  }
 }
 
 module.exports = {

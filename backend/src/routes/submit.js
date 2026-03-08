@@ -58,9 +58,10 @@ router.post('/', authMiddleware, async (req, res) => {
 
             results.push({
                 input: testCase.input,
-                expectedOutput,
+                expectedOutput: testCase.expectedOutput,
                 actualOutput,
                 passed: isPassed,
+                isHidden: testCase.isHidden,
                 status: submission.data.status
             });
         }

@@ -25,6 +25,10 @@ const problemSchema = new mongoose.Schema({
         expectedOutput: {
             type: String,
             required: true
+        },
+        isHidden: {
+            type: Boolean,
+            default: false
         }
     }]
 }, { timestamps: true });
