@@ -5,62 +5,39 @@ const Problem = require('./models/Problem');
 const problems = [
     {
         title: "Print 1 to N",
-        description: "Write a program that prints numbers from 1 to N, one per line.",
+        description: "# Print 1 to N\n\nWrite a program that prints numbers from 1 to N, one per line.\n\n### Constraints\n- 1 <= N <= 100\n\n### Sample Input\n`5`\n\n### Sample Output\n`1`\n`2`\n`3`\n`4`\n`5`",
         difficulty: "Easy",
         tags: ["loops", "math"],
         testCases: [
-            { input: "5", expectedOutput: "1\n2\n3\n4\n5" },
-            { input: "3", expectedOutput: "1\n2\n3" }
+            { input: "5", expectedOutput: "1\n2\n3\n4\n5", isHidden: false },
+            { input: "3", expectedOutput: "1\n2\n3", isHidden: false },
+            { input: "10", expectedOutput: "1\n2\n3\n4\n5\n6\n7\n8\n9\n10", isHidden: true },
+            { input: "1", expectedOutput: "1", isHidden: true }
         ]
     },
     {
         title: "FizzBuzz",
-        description: "Print numbers from 1 to N. For multiples of 3, print 'Fizz'. For multiples of 5, print 'Buzz'. For multiples of both, print 'FizzBuzz'.",
+        description: "# FizzBuzz\n\nPrint numbers from 1 to N. \n- For multiples of 3, print 'Fizz'. \n- For multiples of 5, print 'Buzz'. \n- For multiples of both, print 'FizzBuzz'.\n\n### Constraints\n- 1 <= N <= 100\n\n### Sample Input\n`15`\n\n### Sample Output\n`1`\n`2`\n`Fizz`\n`4`\n`Buzz`\n`Fizz`\n`7`\n`8`\n`Fizz`\n`Buzz`\n`11`\n`Fizz`\n`13`\n`14`\n`FizzBuzz`",
         difficulty: "Easy",
         tags: ["loops", "conditions"],
         testCases: [
-            { input: "5", expectedOutput: "1\n2\nFizz\n4\nBuzz" },
-            { input: "15", expectedOutput: "1\n2\nFizz\n4\nBuzz\nFizz\n7\n8\nFizz\nBuzz\n11\nFizz\n13\n14\nFizzBuzz" }
+            { input: "5", expectedOutput: "1\n2\nFizz\n4\nBuzz", isHidden: false },
+            { input: "15", expectedOutput: "1\n2\nFizz\n4\nBuzz\nFizz\n7\n8\nFizz\nBuzz\n11\nFizz\n13\n14\nFizzBuzz", isHidden: false },
+            { input: "3", expectedOutput: "1\n2\nFizz", isHidden: true },
+            { input: "10", expectedOutput: "1\n2\nFizz\n4\nBuzz\nFizz\n7\n8\nFizz\nBuzz", isHidden: true }
         ]
     },
     {
         title: "Reverse a String",
-        description: "Write a function that reverses a given string.",
+        description: "# Reverse a String\n\nWrite a function that reverses a given string.\n\n### Sample Input\n`hello`\n\n### Sample Output\n`olleh`",
         difficulty: "Easy",
         tags: ["strings"],
         testCases: [
-            { input: "hello", expectedOutput: "olleh" },
-            { input: "world", expectedOutput: "dlrow" }
-        ]
-    },
-    {
-        title: "Sum of Array",
-        description: "Given a list of numbers separated by space, find their sum.",
-        difficulty: "Easy",
-        tags: ["arrays", "math"],
-        testCases: [
-            { input: "1 2 3", expectedOutput: "6" },
-            { input: "-1 1 5", expectedOutput: "5" }
-        ]
-    },
-    {
-        title: "Check Palindrome",
-        description: "Check if a given string is a palindrome. Output 'true' or 'false'.",
-        difficulty: "Medium",
-        tags: ["strings", "conditions"],
-        testCases: [
-            { input: "racecar", expectedOutput: "true" },
-            { input: "hello", expectedOutput: "false" }
-        ]
-    },
-    {
-        title: "Count Vowels",
-        description: "Count the number of vowels (a, e, i, o, u) in a given string.",
-        difficulty: "Easy",
-        tags: ["strings", "loops"],
-        testCases: [
-            { input: "hello", expectedOutput: "2" },
-            { input: "world", expectedOutput: "1" }
+            { input: "hello", expectedOutput: "olleh", isHidden: false },
+            { input: "world", expectedOutput: "dlrow", isHidden: false },
+            { input: "a", expectedOutput: "a", isHidden: true },
+            { input: "ab", expectedOutput: "ba", isHidden: true },
+            { input: "racecar", expectedOutput: "racecar", isHidden: true }
         ]
     }
 ];

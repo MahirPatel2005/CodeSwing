@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {
     Trophy, Play, Send, ChevronRight,
     CheckCircle2,
     XCircle, Clock, Info, Layout, Layers,
-    ChevronLeft, Hash, Globe
+    ChevronLeft, Hash, Globe, FileText, Beaker
 } from 'lucide-react';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
@@ -29,6 +31,7 @@ const Room: React.FC = () => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [results, setResults] = useState<any[]>([]);
     const [sidebarOpen, setSidebarOpen] = useState(true);
+    const [activeTab, setActiveTab] = useState<'description' | 'tests' | 'leaderboard'>('description');
 
     const editorRef = useRef<any>(null);
     const providerRef = useRef<any>(null);
@@ -80,31 +83,44 @@ const Room: React.FC = () => {
     };
 
     const handleRun = async () => {
-        if (!editorRef.current) return;
+        if (!editorRef.current || !problem) return;
         setIsRunning(true);
-        setOutput('Executing code...');
+        setActiveTab('tests');
+        setOutput('Executing public test cases...');
         setResults([]);
 
+        const publicTestCases = problem.testCases.filter((tc: any) => !tc.isHidden);
+        const code = editorRef.current.getValue();
+        const runResults = [];
+
         try {
-            const code = editorRef.current.getValue();
-            // Default to the first test case input if available
-            const defaultStdin = (problem && problem.testCases && problem.testCases.length > 0)
-                ? problem.testCases[0].input
-                : '';
+            for (let i = 0; i < publicTestCases.length; i++) {
+                const tc = publicTestCases[i];
+                setOutput(`Running Test Case ${i + 1}/${publicTestCases.length}...`);
+                
+                const response = await api.post('/execute', {
+                    code,
+                    language,
+                    stdin: tc.input
+                });
 
-            const response = await api.post('/execute', {
-                code,
-                language,
-                stdin: defaultStdin
-            });
+                const actualOutput = (response.data.stdout || '').trim();
+                const expectedOutput = (tc.expectedOutput || '').trim();
+                const isPassed = actualOutput === expectedOutput;
 
-            if (response.data.stderr) {
-                setOutput(`Error:\n${response.data.stderr}`);
-            } else if (response.data.compile_output) {
-                setOutput(`Compile Error:\n${response.data.compile_output}`);
-            } else {
-                setOutput(response.data.stdout || 'Success (No output)');
+                runResults.push({
+                    input: tc.input,
+                    expectedOutput,
+                    actualOutput,
+                    passed: isPassed,
+                    status: response.data.status,
+                    stderr: response.data.stderr,
+                    compile_output: response.data.compile_output
+                });
             }
+            setResults(runResults);
+            const allPassed = runResults.every(r => r.passed);
+            setOutput(allPassed ? "All public test cases passed! 🎉" : "Some test cases failed.");
         } catch (error: any) {
             setOutput(`Failed to execute: ${error.response?.data?.error || error.message}`);
         } finally {
@@ -115,7 +131,8 @@ const Room: React.FC = () => {
     const handleSubmit = async () => {
         if (!editorRef.current || !problem) return;
         setIsSubmitting(true);
-        setOutput('Submitting to hidden test cases...');
+        setActiveTab('tests');
+        setOutput('Submitting to all test cases (including hidden)...');
         setResults([]);
 
         try {
@@ -127,15 +144,19 @@ const Room: React.FC = () => {
                 roomId
             });
 
-            const { passed, total, results } = response.data;
-            setResults(results);
-            setOutput(`Submission Result: ${passed}/${total} test cases passed.`);
-
-            // Notify others via socket
-            if (socket) {
-                socket.emit('room:submit-result', {
-                    charCount: new TextEncoder().encode(code.trim()).length
-                });
+            const { passed, total, results: submissionResults } = response.data;
+            setResults(submissionResults);
+            
+            if (passed === total) {
+                setOutput(`🎉 Success! All ${total} test cases passed.`);
+                // Only update ranking if everything passed
+                if (socket) {
+                    socket.emit('room:submit-result', {
+                        charCount: new TextEncoder().encode(code.trim()).length
+                    });
+                }
+            } else {
+                setOutput(`Submission Result: ${passed}/${total} test cases passed. Keep trying!`);
             }
         } catch (error: any) {
             setOutput(`Submission failed: ${error.response?.data?.error || error.message}`);
@@ -253,14 +274,14 @@ const Room: React.FC = () => {
                         <div className="flex items-center gap-4">
                             <button
                                 onClick={handleRun}
-                                disabled={isRunning}
+                                disabled={isRunning || isSubmitting}
                                 className="flex items-center gap-2 px-6 py-3 hover:bg-white/5 rounded-2xl text-sm font-black tracking-tight transition-all active:scale-95 disabled:opacity-50 border border-transparent hover:border-white/5"
                             >
                                 <Play size={18} className="text-emerald-500 fill-emerald-500/20" /> Run Debug
                             </button>
                             <button
                                 onClick={handleSubmit}
-                                disabled={isSubmitting}
+                                disabled={isSubmitting || isRunning}
                                 className="flex items-center gap-3 px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-sm font-black tracking-tight transition-all shadow-xl shadow-blue-600/30 active:scale-95 disabled:opacity-50"
                             >
                                 <Send size={18} /> {isSubmitting ? 'Evaluating...' : 'Push Submission'}
@@ -271,123 +292,167 @@ const Room: React.FC = () => {
 
                 {/* Right Side: Panels Section */}
                 <div className={`fixed right-0 top-16 bottom-0 w-[40%] flex flex-col bg-[#0d0d0d] border-l border-white/5 transition-transform duration-300 z-20 overflow-hidden ${sidebarOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+                    {/* Tabs Header */}
+                    <div className="h-12 border-b border-white/5 bg-[#0a0a0a] flex">
+                        {[
+                            { id: 'description', label: 'Description', icon: FileText },
+                            { id: 'tests', label: 'Test Results', icon: Beaker },
+                            { id: 'leaderboard', label: 'Leaderboard', icon: Trophy }
+                        ].map((t) => (
+                            <button
+                                key={t.id}
+                                onClick={() => setActiveTab(t.id as any)}
+                                className={`flex-1 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] transition-all border-b-2 ${activeTab === t.id ? 'text-blue-500 border-blue-500 bg-blue-500/5' : 'text-gray-500 border-transparent hover:text-gray-300 hover:bg-white/5'}`}
+                            >
+                                <t.icon size={14} />
+                                {t.label}
+                            </button>
+                        ))}
+                    </div>
+
                     <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col">
-                        {/* Problem Section */}
-                        <section className="p-10 border-b border-white/5 bg-gradient-to-b from-white/[0.02] to-transparent">
-                            <div className="flex items-center gap-2 text-blue-500 mb-6">
-                                <Info size={20} />
-                                <span className="text-[10px] font-black uppercase tracking-[0.3em]">The Challenge</span>
-                            </div>
-                            <h2 className="text-4xl font-black text-white mb-6 tracking-tight leading-none">{problem?.title || 'Loading Title...'}</h2>
-                            <div className="prose prose-invert prose-sm max-w-none mb-8">
-                                <p className="text-gray-400 leading-relaxed text-base font-medium whitespace-pre-wrap">
-                                    {problem?.description || 'Synchronizing with core problem database...'}
-                                </p>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                                <span className={`text-[10px] px-3 py-1 rounded-full font-black uppercase tracking-widest ${problem?.difficulty === 'Easy' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-orange-500/10 text-orange-500'
-                                    }`}>
-                                    {problem?.difficulty || 'Pending'}
-                                </span>
-                                {problem?.tags?.map((t: string) => (
-                                    <span key={t} className="text-[10px] bg-white/5 border border-white/10 px-3 py-1 rounded-full font-bold uppercase text-gray-500">{t}</span>
-                                ))}
-                            </div>
-                        </section>
-
-                        {/* Test Results / Output Section */}
-                        <section className="p-10 border-b border-white/5">
-                            <div className="flex items-center justify-between mb-8">
-                                <div className="flex items-center gap-2 text-indigo-500">
-                                    <Layers size={20} />
-                                    <span className="text-[10px] font-black uppercase tracking-[0.3em]">Diagnostics</span>
+                        {activeTab === 'description' && (
+                            <section className="p-10 bg-gradient-to-b from-white/[0.02] to-transparent animate-in fade-in duration-300">
+                                <div className="flex items-center gap-2 text-blue-500 mb-6">
+                                    <Info size={20} />
+                                    <span className="text-[10px] font-black uppercase tracking-[0.3em]">The Challenge</span>
                                 </div>
-                                <div className="text-[10px] text-gray-600 font-black uppercase">Live Output</div>
-                            </div>
-
-                            <div className="bg-[#050505] rounded-3xl border border-white/5 overflow-hidden shadow-2xl">
-                                <div className="h-8 bg-white/5 flex items-center px-4 border-b border-white/5">
-                                    <div className="flex gap-1.5">
-                                        <div className="w-2 h-2 rounded-full bg-red-500/50"></div>
-                                        <div className="w-2 h-2 rounded-full bg-yellow-500/50"></div>
-                                        <div className="w-2 h-2 rounded-full bg-green-500/50"></div>
-                                    </div>
+                                <h2 className="text-4xl font-black text-white mb-6 tracking-tight leading-none">{problem?.title || 'Loading Title...'}</h2>
+                                
+                                <div className="prose prose-invert prose-blue max-w-none mb-8 text-gray-300 leading-relaxed font-medium">
+                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                        {problem?.description || 'Synchronizing with core problem database...'}
+                                    </ReactMarkdown>
                                 </div>
-                                <div className="p-6 font-mono text-sm leading-relaxed min-h-[160px] whitespace-pre-wrap">
-                                    {output ? (
-                                        <div className="animate-in fade-in slide-in-from-bottom-2">
-                                            {output.split('\n').map((line, i) => (
-                                                <div key={i} className="mb-1 flex">
-                                                    <span className="text-gray-600 w-8 flex-shrink-0 text-right pr-3 border-r border-white/5 mr-3 select-none text-[10px]">{i + 1}</span>
-                                                    <span className="text-gray-200">{line}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <div className="text-gray-700 italic flex flex-col items-center justify-center py-10 opacity-30">
-                                            <Globe size={32} className="mb-4" />
-                                            <span>Ready for execution...</span>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
 
-                            {results.length > 0 && (
-                                <div className="mt-6 space-y-3">
-                                    {results.map((res, i) => (
-                                        <div key={i} className="p-4 bg-white/5 border border-white/5 rounded-2xl flex items-center justify-between group hover:bg-white/[0.08] transition-all">
-                                            <div className="flex items-center gap-4">
-                                                {res.passed ? <CheckCircle2 size={18} className="text-emerald-500" /> : <XCircle size={18} className="text-rose-500" />}
-                                                <div>
-                                                    <div className="text-xs font-black text-white uppercase tracking-tighter">Test Case #{i + 1}</div>
-                                                    <div className="text-[10px] text-gray-500 font-mono mt-0.5 truncate max-w-[120px]">In: "{res.input}"</div>
-                                                </div>
-                                            </div>
-                                            <div className="text-[10px] font-black uppercase text-gray-600 group-hover:text-white transition-colors">Details</div>
-                                        </div>
+                                <div className="flex flex-wrap gap-2 mt-8">
+                                    <span className={`text-[10px] px-3 py-1 rounded-full font-black uppercase tracking-widest ${problem?.difficulty === 'Easy' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-orange-500/10 text-orange-500'
+                                        }`}>
+                                        {problem?.difficulty || 'Pending'}
+                                    </span>
+                                    {problem?.tags?.map((t: string) => (
+                                        <span key={t} className="text-[10px] bg-white/5 border border-white/10 px-3 py-1 rounded-full font-bold uppercase text-gray-500">{t}</span>
                                     ))}
                                 </div>
-                            )}
-                        </section>
+                            </section>
+                        )}
 
-                        {/* Leaderboard Section */}
-                        <section className="p-10 pb-20">
-                            <div className="flex items-center gap-2 text-yellow-500 mb-8">
-                                <Trophy size={20} />
-                                <span className="text-[10px] font-black uppercase tracking-[0.3em]">Live Rankings</span>
-                            </div>
-                            <div className="space-y-3">
-                                {leaderboard.filter(u => u.charCount !== null).length > 0 ? (
-                                    leaderboard
-                                        .filter(u => u.charCount !== null)
-                                        .sort((a, b) => (a.charCount || 0) - (b.charCount || 0))
-                                        .map((u, i) => (
-                                            <div key={u.userId} className={`px-6 py-4 rounded-2xl flex items-center justify-between border transition-all hover:scale-[1.02] ${u.userId === user?.userId ? 'bg-blue-600/20 border-blue-500/40 shadow-lg shadow-blue-600/10' : 'bg-white/5 border-white/5'}`}>
-                                                <div className="flex items-center gap-4">
-                                                    <span className={`text-base font-black w-6 text-center ${i === 0 ? 'text-yellow-500 italic' : i === 1 ? 'text-gray-400' : i === 2 ? 'text-orange-600' : 'text-gray-700'}`}>
-                                                        {i === 0 ? '🏆' : i + 1}
-                                                    </span>
-                                                    <div className="flex flex-col">
-                                                        <span className="text-sm font-black text-white leading-tight">{u.username}</span>
-                                                        <span className="text-[9px] font-black uppercase tracking-tighter text-emerald-500">Live Byte Tracking</span>
+                        {activeTab === 'tests' && (
+                            <section className="p-10 animate-in fade-in duration-300">
+                                <div className="flex items-center justify-between mb-8">
+                                    <div className="flex items-center gap-2 text-indigo-500">
+                                        <Layers size={20} />
+                                        <span className="text-[10px] font-black uppercase tracking-[0.3em]">Diagnostics</span>
+                                    </div>
+                                    <div className="text-[10px] text-gray-600 font-black uppercase">Session Output</div>
+                                </div>
+
+                                <div className="bg-[#050505] rounded-3xl border border-white/5 overflow-hidden shadow-2xl mb-8">
+                                    <div className="h-8 bg-white/5 flex items-center px-4 border-b border-white/5 text-[10px] font-black text-gray-500 uppercase tracking-widest">
+                                        Terminal
+                                    </div>
+                                    <div className="p-6 font-mono text-sm leading-relaxed min-h-[160px] whitespace-pre-wrap">
+                                        {output ? (
+                                            <div className="animate-in fade-in slide-in-from-bottom-2">
+                                                {output.split('\n').map((line, i) => (
+                                                    <div key={i} className="mb-1 flex">
+                                                        <span className="text-gray-600 w-8 flex-shrink-0 text-right pr-3 border-r border-white/5 mr-3 select-none text-[10px]">{i + 1}</span>
+                                                        <span className="text-gray-200">{line}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <div className="text-gray-700 italic flex flex-col items-center justify-center py-10 opacity-30">
+                                                <Globe size={32} className="mb-4" />
+                                                <span>Ready for execution...</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {results.length > 0 && (
+                                    <div className="space-y-4">
+                                        <div className="text-[10px] font-black uppercase tracking-widest text-gray-600 px-2">Test Cases</div>
+                                        {results.map((res, i) => (
+                                            <div key={i} className={`p-6 bg-white/5 border border-white/5 rounded-3xl group hover:bg-white/[0.08] transition-all ${res.passed ? 'border-l-4 border-l-emerald-500' : 'border-l-4 border-l-rose-500'}`}>
+                                                <div className="flex items-center justify-between mb-4">
+                                                    <div className="flex items-center gap-3">
+                                                        {res.passed ? <CheckCircle2 size={18} className="text-emerald-500" /> : <XCircle size={18} className="text-rose-500" />}
+                                                        <span className="text-xs font-black text-white uppercase tracking-tight">
+                                                            {res.isHidden ? 'Hidden Test Case' : `Test Case #${i + 1}`}
+                                                        </span>
+                                                    </div>
+                                                    <div className={`text-[10px] font-black uppercase px-2 py-1 rounded ${res.passed ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'}`}>
+                                                        {res.passed ? 'Passed' : 'Failed'}
                                                     </div>
                                                 </div>
-                                                <div className="flex items-center gap-6">
+                                                
+                                                {!res.isHidden ? (
+                                                    <div className="grid grid-cols-2 gap-4 mt-4">
+                                                        <div className="flex flex-col gap-2">
+                                                            <span className="text-[9px] font-black uppercase text-gray-600 tracking-widest">Input</span>
+                                                            <div className="bg-black/40 p-3 rounded-xl font-mono text-[11px] text-gray-300 border border-white/5">{res.input}</div>
+                                                        </div>
+                                                        <div className="flex flex-col gap-2">
+                                                            <span className="text-[9px] font-black uppercase text-gray-600 tracking-widest">Output</span>
+                                                            <div className="bg-black/40 p-3 rounded-xl font-mono text-[11px] text-gray-300 border border-white/5">{res.actualOutput || (res.passed ? 'Empty' : 'Error')}</div>
+                                                        </div>
+                                                        {(!res.passed && res.stderr) && (
+                                                            <div className="col-span-2 mt-2">
+                                                                <span className="text-[9px] font-black uppercase text-rose-500 tracking-widest">Error Log</span>
+                                                                <div className="bg-rose-500/5 p-3 rounded-xl font-mono text-[10px] text-rose-400 border border-rose-500/10 mt-2">{res.stderr}</div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    <div className="text-[10px] text-gray-500 italic mt-2">
+                                                        Details are hidden for validation test cases.
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </section>
+                        )}
+
+                        {activeTab === 'leaderboard' && (
+                            <section className="p-10 animate-in fade-in duration-300">
+                                <div className="flex items-center gap-2 text-yellow-500 mb-8">
+                                    <Trophy size={20} />
+                                    <span className="text-[10px] font-black uppercase tracking-[0.3em]">Live Rankings</span>
+                                </div>
+                                <div className="space-y-4">
+                                    {leaderboard.filter(u => u.charCount !== null).length > 0 ? (
+                                        leaderboard
+                                            .filter(u => u.charCount !== null)
+                                            .sort((a, b) => (a.charCount || 0) - (b.charCount || 0))
+                                            .map((u, i) => (
+                                                <div key={u.userId} className={`px-6 py-5 rounded-3xl flex items-center justify-between border transition-all hover:scale-[1.02] ${u.userId === user?.userId ? 'bg-blue-600/20 border-blue-500/40 shadow-lg shadow-blue-600/10' : 'bg-white/5 border-white/5'}`}>
+                                                    <div className="flex items-center gap-4">
+                                                        <span className={`text-base font-black w-8 text-center ${i === 0 ? 'text-yellow-500 italic text-xl' : i === 1 ? 'text-gray-400' : i === 2 ? 'text-orange-600' : 'text-gray-700'}`}>
+                                                            {i === 0 ? '🏆' : i + 1}
+                                                        </span>
+                                                        <div className="flex flex-col">
+                                                            <span className="text-sm font-black text-white leading-tight">{u.username}</span>
+                                                            <span className="text-[9px] font-black uppercase tracking-tighter text-emerald-500">Fastest Submission</span>
+                                                        </div>
+                                                    </div>
                                                     <div className="flex flex-col items-end">
-                                                        <span className="text-lg font-mono font-black text-blue-500 leading-none">{u.charCount}</span>
+                                                        <span className="text-xl font-mono font-black text-blue-500 leading-none">{u.charCount}</span>
                                                         <span className="text-[8px] font-black uppercase tracking-widest text-gray-600 mt-1">Bytes</span>
                                                     </div>
                                                 </div>
-                                            </div>
-                                        ))
-                                ) : (
-                                    <div className="text-center py-12 border-2 border-dashed border-white/5 rounded-[2rem] opacity-30">
-                                        <Trophy size={40} className="mx-auto mb-4" />
-                                        <p className="text-xs font-black uppercase tracking-widest">No Submissions Recorded</p>
-                                    </div>
-                                )}
-                            </div>
-                        </section>
+                                            ))
+                                    ) : (
+                                        <div className="text-center py-20 border-2 border-dashed border-white/5 rounded-[3rem] opacity-30">
+                                            <Trophy size={48} className="mx-auto mb-4" />
+                                            <p className="text-xs font-black uppercase tracking-widest">No Validated Submissions</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </section>
+                        )}
                     </div>
                 </div>
             </div>
