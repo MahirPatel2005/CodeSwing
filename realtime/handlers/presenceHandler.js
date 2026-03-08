@@ -38,10 +38,11 @@ module.exports = (io) => {
     socket.on('room:submit-result', async ({ charCount }) => {
       if (!currentRoomId || !currentUserId) return;
 
-      const leaderboardBefore = await getLeaderboard(currentRoomId);
-      const user = leaderboardBefore.find(u => u.userId === currentUserId);
+      const key = `room:${currentRoomId}:users`;
+      const userDataRaw = await require('../store/redis').redis.hget(key, currentUserId);
       
-      if (user) {
+      if (userDataRaw) {
+        const user = JSON.parse(userDataRaw);
         await updateLeaderboard(currentRoomId, currentUserId, {
           ...user,
           charCount

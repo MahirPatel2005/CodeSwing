@@ -38,15 +38,17 @@ router.post('/', authMiddleware, async (req, res) => {
 
         for (const testCase of problem.testCases) {
             const submission = await axios.post(
-                `${JUDGE0_URL}/submissions?base64_encoded=false&wait=true`,
+                `${JUDGE0_URL}/submissions?base64_encoded=true&wait=true`,
                 {
-                    source_code: code,
+                    source_code: Buffer.from(code).toString('base64'),
                     language_id,
-                    stdin: testCase.input
+                    stdin: Buffer.from(testCase.input || "").toString('base64')
                 }
             );
 
-            const actualOutput = (submission.data.stdout || '').trim();
+            const decode = (str) => str ? Buffer.from(str, 'base64').toString('utf8') : '';
+
+            const actualOutput = decode(submission.data.stdout).trim();
             const expectedOutput = (testCase.expectedOutput || '').trim();
 
             const isPassed = actualOutput === expectedOutput;
