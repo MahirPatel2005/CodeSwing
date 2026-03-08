@@ -38,10 +38,23 @@ router.post('/register', async (req, res) => {
 
         await newUser.save();
 
-        res.json({
+        const payload = {
             userId: newUser._id,
             username: newUser.username,
             email: newUser.email
+        };
+        const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '7d' });
+
+        res.json({
+            userId: newUser._id,
+            username: newUser.username,
+            email: newUser.email,
+            token,
+            user: {
+                _id: newUser._id,
+                username: newUser.username,
+                email: newUser.email
+            }
         });
     } catch (error) {
         console.error(error);
@@ -77,7 +90,12 @@ router.post('/login', async (req, res) => {
 
         res.json({
             token,
-            user: payload
+            user: {
+                _id: user._id,
+                userId: user._id,
+                username: user.username,
+                email: user.email
+            }
         });
     } catch (error) {
         console.error(error);
@@ -95,7 +113,12 @@ router.get('/me', authMiddleware, async (req, res) => {
         res.json({
             userId: user._id,
             username: user.username,
-            email: user.email
+            email: user.email,
+            user: {
+                _id: user._id,
+                username: user.username,
+                email: user.email
+            }
         });
     } catch (error) {
         console.error(error);

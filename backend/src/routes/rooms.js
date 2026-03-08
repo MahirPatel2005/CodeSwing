@@ -3,6 +3,7 @@ const { customAlphabet } = require('nanoid');
 const nanoid = customAlphabet('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ', 8);
 const Room = require('../models/Room');
 const Problem = require('../models/Problem');
+const Submission = require('../models/Submission');
 const authMiddleware = require('../middleware/authMiddleware');
 
 const router = express.Router();
@@ -75,6 +76,29 @@ router.post('/join', authMiddleware, async (req, res) => {
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Failed to join room' });
+    }
+});
+
+router.get('/:roomId/snapshots', async (req, res) => {
+    try {
+        const { roomId } = req.params;
+        const submissions = await Submission.find({ roomId }).sort({ createdAt: -1 });
+
+        const snapshots = {};
+        for (const sub of submissions) {
+            if (!snapshots[sub.userId]) {
+                snapshots[sub.userId] = {
+                    code: sub.code,
+                    charCount: sub.charCount,
+                    timestamp: sub.createdAt || Date.now()
+                };
+            }
+        }
+
+        res.json(snapshots);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Failed to fetch snapshots' });
     }
 });
 

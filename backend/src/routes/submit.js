@@ -14,6 +14,11 @@ const languageMap = {
     cpp: 54
 };
 
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+
 router.post('/', authMiddleware, async (req, res) => {
     try {
         const { problemId, code, language, roomId } = req.body;
@@ -64,6 +69,7 @@ router.post('/', authMiddleware, async (req, res) => {
                 isHidden: testCase.isHidden,
                 status: submission.data.status
             });
+            await sleep(200);
         }
 
         const charCount = Buffer.byteLength(code, 'utf8');
@@ -92,4 +98,25 @@ router.post('/', authMiddleware, async (req, res) => {
     }
 });
 
+router.get(['/', '/history', '/submissions'], authMiddleware, async (req, res) => {
+    console.log("SUBMISSIONS ROUTE HIT");
+    try {
+        const { roomId, userId } = req.query;
+        let query = {};
+        if (roomId) query.roomId = roomId;
+        if (userId) query.userId = userId;
+
+        const submissions = await Submission.find(query)
+            .sort({ createdAt: -1 })
+            .limit(20);
+
+        res.json({ submissions });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Failed to fetch submissions' });
+    }
+});
+
 module.exports = router;
+
+
